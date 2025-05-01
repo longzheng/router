@@ -7,10 +7,10 @@ This tutorial will guide you through building a complete full-stack application 
 
 ## What You'll Learn
 
-Part 1:
-- Implementing server functions 
-- Reading and writing data to file 
-- Building a complete UI with React components
+**Part 1**:
+1. Implementing server functions 
+1. Reading and writing data to file 
+1. Building a complete UI with React components
 
 <!-- Part 2: 
 - Implementing server functions 
@@ -21,19 +21,19 @@ Part 3:
 <TBD>  -->
 
 
-## Prerequisites
+## Pre-requisites
 
 - Basic knowledge of React and TypeScript. 
 - Node.js and `pnpm` installed on your machine
 - Familiarity with TanStack Start basics (see [Quick Start Guide](/start/framework/react/quick-start))
-- Server side Rendering. Here's a resource - 
+- Server side Rendering. Here's a resource - <TODO>
 - Client side hydration
+- TanStack Router
 
 ## Nice to know
 - React Query
-- TanStack Router
 
-## Settinng up a TanStack Start Project
+## Setting up a TanStack Start Project
 
 First, let's create a new TanStack Start project:
 
@@ -104,7 +104,7 @@ At this point, we already have a demo server function ready to use. Let's go ahe
 - Create type-safe server functions for data management
 - Building a responsive Jokes List component
 
-### Implementation
+Let's implement this! 
 
 #### Step 1.1: Create a JSON file with jokes
 Let's setup a list of jokes that we can use to render on the page. Create a `data` directory in your project root and a `jokes.json` file within it:
@@ -112,62 +112,104 @@ Let's setup a list of jokes that we can use to render on the page. Create a `dat
 ```bash
 mkdir -p src/data
 touch src/data/jokes.json
-echo "[{id: '1', content: 'Why did the programmer go broke?', punchline: 'Because he used up all his cache!'}]" > src/data/jokes.json
+echo "[\n    {\n      \"id\": 1,\n      \"question\": \"Why don't keyboards sleep?\",\n      \"answer\": \"Because they have two shifts\"\n    },\n    \n        {\n          \"id\": 2,\n          \"question\": \"Are you a RESTful API?\",\n          \"answer\": \"Because you GET my attention, PUT some love, POST the cutest smile, and DELETE my bad day\"\n        },\n        {\n          \"id\": 3,\n          \"question\": \"I used to know a joke about Java\",\n          \"answer\": \"But I run out of memory.\"\n        },\n        {\n          \"id\": 4,\n          \"question\": \"Why do Front-End Developers eat lunch alone?\",\n          \"answer\": \"Because, they don't know how to join tables.\"\n        },\n        {\n          \"id\": 5,\n          \"question\": \"I am declaring a war.\",\n          \"answer\": \"var war;\"\n        }\n      ]"  > src/data/jokes.json
 ```
 
-Then create a server function to read and write jokes to a JSON file:
 
-```tsx
-// app/server/jokes.ts
-import { serverFn } from '@tanstack/react-start/server-functions'
-import fs from 'node:fs/promises'
-import path from 'node:path'
 
-const JOKES_FILE = path.join(process.cwd(), 'data', 'jokes.json')
 
-// Type for our joke data
-export interface Joke {
-  id: string
-  content: string
-  author: string
-  createdAt: string
+Let's clean up our `App.jsx` file to remove the demo component. 
+
+
+```jsx
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/")({
+  component: App,
+});
+
+function App() {
+  return (
+    <div className="p-4">
+      <h1>DevJokes</h1>
+    </div>
+  );
 }
 
-// Initialize jokes file if it doesn't exist
-export const initJokesFile = serverFn(async () => {
-  try {
-    await fs.access(JOKES_FILE)
-  } catch (error) {
-    // File doesn't exist, create it with empty array
-    await fs.mkdir(path.dirname(JOKES_FILE), { recursive: true })
-    await fs.writeFile(JOKES_FILE, JSON.stringify([]))
-  }
-})
-
-// Get all jokes
-export const getJokes = serverFn(async (): Promise<Joke[]> => {
-  await initJokesFile()
-  const data = await fs.readFile(JOKES_FILE, 'utf-8')
-  return JSON.parse(data)
-})
-
-// Add a new joke
-export const addJoke = serverFn(async (joke: Omit<Joke, 'id' | 'createdAt'>): Promise<Joke> => {
-  const jokes = await getJokes()
-  
-  const newJoke: Joke = {
-    ...joke,
-    id: Math.random().toString(36).substring(2, 9),
-    createdAt: new Date().toISOString()
-  }
-  
-  await fs.writeFile(JOKES_FILE, JSON.stringify([...jokes, newJoke]))
-  
-  return newJoke
-})
 ```
 
-## Step 2: Creating the UI Components
+This is where we will add our Jokes so that when the user lands on the home page, they can see the jokes.
+
+  #### Step 1.2: Create Server Functions to Read the File
+
+  Let's create a server function to perform a read-write operation. This will be used to read jokes from a JSON file and render jokes on the page. We will also create a server function to write a new  joke to the JSON file.
+   The starter app already comes with a page called "Start Server Functions". We are going to take inspiration from this to write our own server functions. 
+   
+ Let's create a server function using [`createServerFunction`](https://tanstack.com/start/latest/docs/framework/react/server-functions). 
+
+
+
+```tsx
+import { createServerFn } from "@tanstack/react-start";
+import * as fs from "node:fs";
+
+interface Joke {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+interface JokesData {
+  jokes: Joke[];
+}
+const JOKES_FILE = "./data/jokes.json";
+
+const getJokes = createServerFn({ method: "GET" }).handler(async () => {
+   const jokes = await fs.promises.readFile(JOKES_FILE, "utf-8");
+  return JSON.parse(jokes) as JokesData;
+});
+
+```
+
+In this code, we are using `createServerFn` to create a server function that reads the jokes from the JSON file. The `handler` function is where we are using the `fs` module to read the file. 
+
+Now to consume this server function, we can simply call this in our code using TanStack Router which already comes with TanStack Start! 
+
+```jsx
+// App.jsx
+
+function App() {
+  const jokes = Route.useLoaderData() || [];
+
+  return (
+    <div className="p-4 flex flex-col">
+      <h1 className="text-2xl">DevJokes</h1>
+      <div>
+        {jokes?.map((joke) => (
+          <div key={joke?.id}>
+            <p>{joke?.question}</p>
+            <p>{joke?.answer}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+When the page loads, `jokes` will have data from the jokes.json file already! 
+
+
+With a little Tailwind styling, the app should look like this: 
+<TODO: ADD TAILWIND>
+
+<INSERT PHOTO-3>
+
+
+<EXPLANATION OF WHAT HAPPENED HERE>
+
+
+
+## Step 2: DOES THIS WORK? 
 
 Next, let's create the UI for our jokes app.
 
